@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "React Extension",
+  "name": "PolicyGaurd",
   "version": "1.0.0",
-  "description": "A simple React app as a Chrome extension",
+  "description": "React eextention that allows customer to scan a pdf document and give them important pint of description to nt read all of the boaring small fonts peregraphhs",
   "icons": {
     "16": "icon16.png",
     "32": "icon32.png",
