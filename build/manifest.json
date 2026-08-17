@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "PolicyGaurd",
+  "name": "AgreeWise",
   "version": "1.0.0",
   "description": "React eextention that allows customer to scan a pdf document and give them important pint of description to nt read all of the boaring small fonts peregraphhs",
   "icons": {
