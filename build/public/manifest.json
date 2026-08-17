@@ -17,5 +17,6 @@
       "48": "icon48.png"
     }
   },
-  "permissions": ["activeTab", "scripting", "tabs"]
+  "permissions": ["activeTab", "scripting", "tabs"],
+  "host_permissions": ["https://api.groq.com/*"]
 }
