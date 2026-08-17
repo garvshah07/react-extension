@@ -53,7 +53,7 @@ const Home = () => {
     if (!scanData.trim()) return
 
     const apiKey = import.meta.env.VITE_REACT_APP_GROQ_API_KEY
-    const model = import.meta.env.VITE_REACT_APP_GROQ_MODEL || 'llama-3.1-8b-instant'
+    const model = import.meta.env.VITE_REACT_APP_GROQ_MODEL
     const prompt =
       import.meta.env.VITE_REACT_APP_GROQ_PROMPT ||
       'You are a policy auditor. Summarize important risks clearly.'
