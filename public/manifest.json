@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "AgreeWise",
   "version": "1.0.0",
-  "description": "React eextention that allows customer to scan a pdf document and give them important pint of description to nt read all of the boaring small fonts peregraphhs",
+  "description": "A browser extension that scans policy and document text, then highlights the most important risks and key points in a clear, easy-to-review summary.",
   "icons": {
     "16": "icon16.png",
     "32": "icon32.png",
@@ -17,6 +17,6 @@
       "48": "icon48.png"
     }
   },
-  "permissions": ["activeTab", "scripting", "tabs"],
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
   "host_permissions": ["https://api.groq.com/*"]
 }

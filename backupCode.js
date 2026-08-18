@@ -1,12 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Groq } from 'groq-sdk'
-import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist'
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-
-GlobalWorkerOptions.workerSrc = pdfWorker
-
-const HISTORY_STORAGE_KEY = 'agreewise_audit_history'
-const TAB_OPTIONS = ['Scan', 'Upload Document', 'History']
 
 function extractPageText() {
   const blockedTags = ['NAV', 'HEADER', 'FOOTER', 'ASIDE']
@@ -30,54 +23,6 @@ function extractPageText() {
     .filter(Boolean)
 
   return textParts.join('\n\n')
-}
-
-async function readFileAsText(file) {
-  return file.text()
-}
-
-async function readFileAsArrayBuffer(file) {
-  return file.arrayBuffer()
-}
-
-async function extractPdfText(file) {
-  const pdfData = await readFileAsArrayBuffer(file)
-  const pdf = await getDocument({ data: pdfData }).promise
-  const pages = []
-
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const page = await pdf.getPage(pageNumber)
-    const textContent = await page.getTextContent()
-    const pageText = textContent.items
-      .map((item) => ('str' in item ? item.str : ''))
-      .join(' ')
-      .trim()
-
-    if (pageText) {
-      pages.push(pageText)
-    }
-  }
-
-  return pages.join('\n\n')
-}
-
-async function extractUploadedDocumentText(file) {
-  const fileName = file.name.toLowerCase()
-  const fileType = file.type.toLowerCase()
-
-  if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
-    return extractPdfText(file)
-  }
-
-  if (
-    fileType.startsWith('text/') ||
-    fileName.endsWith('.txt') ||
-    fileName.endsWith('.md')
-  ) {
-    return readFileAsText(file)
-  }
-
-  throw new Error('Unsupported file type. Please upload a PDF, TXT, or MD file.')
 }
 
 function parseAuditSummary(content) {
@@ -161,51 +106,13 @@ function extractAuditText(response) {
   return ''
 }
 
-function formatHistoryDate(value) {
-  try {
-    return new Date(value).toLocaleString()
-  } catch {
-    return 'Unknown time'
-  }
-}
-
-function getStorageArea() {
-  return chrome?.storage?.local
-}
-
-async function loadAuditHistory() {
-  const storage = getStorageArea()
-
-  if (!storage) {
-    return []
-  }
-
-  const result = await storage.get(HISTORY_STORAGE_KEY)
-  return Array.isArray(result?.[HISTORY_STORAGE_KEY]) ? result[HISTORY_STORAGE_KEY] : []
-}
-
-async function saveAuditHistory(history) {
-  const storage = getStorageArea()
-
-  if (!storage) {
-    return
-  }
-
-  await storage.set({ [HISTORY_STORAGE_KEY]: history })
-}
-
 const Home = () => {
-  const fileInputRef = useRef(null)
-  const [activeTab, setActiveTab] = useState('Scan')
   const [scanData, setScanData] = useState('')
   const [auditResult, setAuditResult] = useState('')
   const [loading, setLoading] = useState(false)
   const [scanLoading, setScanLoading] = useState(false)
-  const [uploadLoading, setUploadLoading] = useState(false)
   const [scanStatus, setScanStatus] = useState('')
   const [auditStatus, setAuditStatus] = useState('')
-  const [sourceLabel, setSourceLabel] = useState('')
-  const [historyItems, setHistoryItems] = useState([])
   const parsedAudit = parseAuditSummary(auditResult)
   const getRiskBadgeClasses = (riskLevel) => {
     const normalized = riskLevel?.toLowerCase()
@@ -225,42 +132,9 @@ const Home = () => {
     return 'bg-rose-100 text-rose-700'
   }
 
-  useEffect(() => {
-    const hydrateHistory = async () => {
-      const storedHistory = await loadAuditHistory()
-      setHistoryItems(storedHistory)
-    }
-
-    hydrateHistory()
-  }, [])
-
-  const persistAuditToHistory = async (auditText) => {
-    const nextEntry = {
-      id: crypto.randomUUID(),
-      sourceLabel: sourceLabel || 'Unknown source',
-      createdAt: new Date().toISOString(),
-      auditResult: auditText,
-    }
-
-    const existingHistory = await loadAuditHistory()
-    const nextHistory = [nextEntry, ...existingHistory].slice(0, 15)
-    setHistoryItems(nextHistory)
-    await saveAuditHistory(nextHistory)
-  }
-
-  const openHistoryItem = (entry) => {
-    setAuditResult(entry.auditResult)
-    setSourceLabel(entry.sourceLabel)
-    setAuditStatus('Loaded from history.')
-    setActiveTab('History')
-  }
-
   const handleScan = async () => {
-    setActiveTab('Scan')
     setScanLoading(true)
     setScanStatus('')
-    setAuditStatus('')
-    setAuditResult('')
 
     try {
       const [activeTab] = await chrome.tabs.query({
@@ -274,7 +148,6 @@ const Home = () => {
       })
 
       setScanData(result || 'No text found.')
-      setSourceLabel('Live page scan')
       setScanStatus(
         result?.trim()
           ? 'Scan complete. Policy text is ready for audit.'
@@ -285,43 +158,6 @@ const Home = () => {
       setScanStatus('Scan failed. Try again on a page with readable policy text.')
     } finally {
       setScanLoading(false)
-    }
-  }
-
-  const handleUploadClick = () => {
-    setActiveTab('Upload Document')
-    fileInputRef.current?.click()
-  }
-
-  const handleFileUpload = async (event) => {
-    const file = event.target.files?.[0]
-
-    if (!file) {
-      return
-    }
-
-    setUploadLoading(true)
-    setScanStatus('')
-    setAuditStatus('')
-    setAuditResult('')
-
-    try {
-      const extractedText = await extractUploadedDocumentText(file)
-
-      setScanData(extractedText || 'No text found in the uploaded document.')
-      setSourceLabel(file.name)
-      setScanStatus(
-        extractedText?.trim()
-          ? `Upload complete. ${file.name} is ready for audit.`
-          : `Upload complete, but no readable text was found in ${file.name}.`
-      )
-    } catch (error) {
-      setScanData('')
-      setSourceLabel('')
-      setScanStatus(error?.message || 'Document upload failed.')
-    } finally {
-      event.target.value = ''
-      setUploadLoading(false)
     }
   }
 
@@ -371,7 +207,6 @@ const Home = () => {
       if (auditText) {
         setAuditResult(auditText)
         setAuditStatus('Audit complete. Results are shown below.')
-        await persistAuditToHistory(auditText)
       } else {
         setAuditStatus('Audit finished, but no readable summary was returned.')
       }
@@ -392,89 +227,14 @@ const Home = () => {
           <p className='text-sm text-slate-600'>Know what you agree to</p>
         </div>
 
-        <div className='grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-white/70 p-2 shadow-sm'>
-          {TAB_OPTIONS.map((tab) => (
-            <button
-              key={tab}
-              type='button'
-              onClick={() => setActiveTab(tab)}
-              className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
-                activeTab === tab
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-transparent text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-
-        {activeTab === 'Scan' && (
-          <button
-            type='button'
-            onClick={handleScan}
-            disabled={scanLoading}
-            className='rounded-xl bg-slate-900 px-4 py-2 font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60'
-          >
-            {scanLoading ? 'Scanning...' : 'Scan Current Page'}
-          </button>
-        )}
-
-        <input
-          ref={fileInputRef}
-          type='file'
-          accept='.pdf,.txt,.md,text/plain,application/pdf'
-          onChange={handleFileUpload}
-          className='hidden'
-        />
-
-        {activeTab === 'Upload Document' && (
-          <button
-            type='button'
-            onClick={handleUploadClick}
-            disabled={uploadLoading}
-            className='rounded-xl border border-slate-300 bg-white px-4 py-2 font-medium text-slate-900 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60'
-          >
-            {uploadLoading ? 'Uploading...' : 'Choose Document'}
-          </button>
-        )}
-
-        {activeTab === 'History' && (
-          <div className='space-y-3'>
-            {historyItems.length > 0 ? (
-              historyItems.map((entry) => {
-                const entrySummary = parseAuditSummary(entry.auditResult)
-                return (
-                  <button
-                    key={entry.id}
-                    type='button'
-                    onClick={() => openHistoryItem(entry)}
-                    className='w-full rounded-2xl border border-slate-200 bg-white/90 p-4 text-left shadow-sm transition hover:border-slate-300 hover:bg-white'
-                  >
-                    <div className='flex items-start justify-between gap-3'>
-                      <div>
-                        <div className='text-sm font-semibold text-slate-900'>{entry.sourceLabel}</div>
-                        <div className='mt-1 text-xs text-slate-500'>
-                          {formatHistoryDate(entry.createdAt)}
-                        </div>
-                      </div>
-                      <span className='rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600'>
-                        {entrySummary.items.length || 3} points
-                      </span>
-                    </div>
-                    <div className='mt-3 text-sm text-slate-700'>
-                      {entrySummary.items[0]?.heading || 'Saved audit result'}
-                    </div>
-                  </button>
-                )
-              })
-            ) : (
-              <div className='rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5 text-sm text-slate-600'>
-                No audit history yet. Run an audit from Scan or Upload Document to save it here.
-              </div>
-            )}
-          </div>
-        )}
+        <button
+          type='button'
+          onClick={handleScan}
+          disabled={scanLoading}
+          className='rounded-xl bg-slate-900 px-4 py-2 font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60'
+        >
+          {scanLoading ? 'Scanning...' : 'Scan'}
+        </button>
 
         {scanStatus && (
           <div className='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'>
@@ -482,22 +242,9 @@ const Home = () => {
           </div>
         )}
 
-        {sourceLabel && (
-          <div className='rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-700'>
-            Source: {sourceLabel}
-          </div>
-        )}
-
         <button
           onClick={handleAudit}
-          disabled={
-            activeTab === 'History' ||
-            loading ||
-            scanLoading ||
-            uploadLoading ||
-            !scanData.trim() ||
-            scanData === 'Unable to scan this page.'
-          }
+          disabled={loading || !scanData.trim() || scanData === 'Unable to scan this page.'}
           className='rounded-xl border border-slate-300 bg-white px-4 py-2 font-medium text-slate-900 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60'
         >
           {loading ? 'Auditing...' : 'Audit Policy'}
